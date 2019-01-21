@@ -1189,7 +1189,7 @@ be desirable to increase how often .name will be used."
   :type 'boolean)
 (put 'verilog-auto-inst-dot-name 'safe-local-variable #'verilog-booleanp)
 
-(defcustom verilog-auto-inst-param-value nil
+(defcustom verilog-auto-inst-param-value t
   "Non-nil means AUTOINST will replace parameters with the parameter value.
 If nil, leave parameters as symbolic names.
 
@@ -1395,7 +1395,7 @@ See the \\[verilog-faq] for examples on using this."
   :type '(choice (const nil) regexp))
 (put 'verilog-auto-unused-ignore-regexp 'safe-local-variable #'stringp)
 
-(defcustom verilog-case-fold t
+(defcustom verilog-case-fold nil
   "Non-nil means `verilog-mode' regexps should ignore case.
 This variable is t for backward compatibility; nil is suggested."
   :version "24.4"
@@ -13986,6 +13986,35 @@ Typing \\[verilog-auto] will make this into:
 	    (setq sig-list (cdr sig-list))))
 	(verilog-insert-indent "// End of automatics\n")))))
 
+(defun tie0 () (if (equal vl-dir "input") (concat "{" vl-width "{1'b0}}") ""))
+(defun tie1 () (if (equal vl-dir "input") (concat "{" vl-width "{1'b1}}") ""))
+
+(defun verilog-auto-list ()
+  "Expand AUTOLIST statements"
+  (save-excursion
+    (let* ((indent-pt (current-indentation))
+      (params (verilog-read-auto-params 0 2))
+      (regexp (nth 0 params))
+      (not-re (nth 1 params))
+      (modi (verilog-modi-current))
+      (moddecls (verilog-modi-get-decls modi))
+      (sig-list (verilog-signals-combine-bus
+                (verilog-decls-get-signals moddecls))))
+      (when regexp
+        (setq sig-list (verilog-signals-matching-regexp sig-list regexp)))
+      (when not-re
+        (setq sig-list (verilog-signals-not-matching-regexp sig-list not-re)))
+      (when sig-list
+        (verilog-forward-or-insert-line)
+        (verilog-insert-indent "// Beginning of automatics\n")
+        (setq sig-list (sort (copy-alist sig-list) `verilog-signals-sort-compare))
+        (while sig-list
+          (let ((sig (car sig-list)))
+            (indent-to indent-pt)
+            (insert (verilog-sig-name sig) ",\n")
+            (setq sig-list (cdr sig-list))))
+        (verilog-insert-indent "// End of automatics\n")))))
+
 (defun verilog-enum-ascii (signm elim-regexp)
   "Convert an enum name SIGNM to an ascii string for insertion.
 Remove user provided prefix ELIM-REGEXP."
@@ -14336,6 +14365,9 @@ Wilson Snyder (wsnyder@wsnyder.org)."
           ;; Do user inserts first, so their code can insert AUTOs
           (verilog-auto-re-search-do "/\\*AUTOINSERTLISP(.*?)\\*/"
                                      'verilog-auto-insert-lisp)
+          (verilog-auto-re-search-do "/\\*AUTOINOUTMODULE(.*?)\\*/" 'verilog-auto-inout-module)
+          (verilog-auto-re-search-do "/\\*AUTOINOUTCOMP(.*?)\\*/" 'verilog-auto-inout-comp)
+          (verilog-auto-re-search-do "/\\*AUTOINOUTPARAM(.*?)\\*/" 'verilog-auto-inout-param)
           ;; Expand instances before need the signals the instances input/output
           (verilog-auto-re-search-do "/\\*AUTOINSTPARAM\\((.*?)\\)?\\*/" 'verilog-auto-inst-param)
           (verilog-auto-re-search-do "/\\*AUTOINST\\((.*?)\\)?\\*/" 'verilog-auto-inst)
@@ -14368,6 +14400,7 @@ Wilson Snyder (wsnyder@wsnyder.org)."
           ;; Doesn't matter when done, but combine it with a common changer
           (verilog-auto-re-search-do "/\\*\\(AUTOSENSE\\|AS\\)\\*/" 'verilog-auto-sense)
           ;; After AUTOREG*, as they may have set signal widths
+          (verilog-auto-re-search-do "/\\*AUTOLIST\\((.*?)\\)?\\*/" 'verilog-auto-list)
           (verilog-auto-re-search-do "/\\*AUTORESET\\*/" 'verilog-auto-reset)
           ;; After we've created all new variables
           (verilog-auto-re-search-do "/\\*AUTOUNUSED\\*/" 'verilog-auto-unused)
